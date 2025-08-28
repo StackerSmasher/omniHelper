@@ -1,16 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "Omnichat Appeal ID Tracker",
-  "version": "1.0.0",
-  "description": "Tracks and logs appeal IDs from omnichat.rt.ru PUT requests",
+  "name": "Omnichat Appeal ID Tracker (Refactored)",
+  "version": "2.0.0",
+  "description": "Tracks and logs appeal IDs from omnichat.rt.ru and provides auto-responses.",
   "permissions": [
-    "activeTab",
     "storage",
     "tabs"
   ],
   "host_permissions": [
-    "*://omnichat.rt.ru/*",
-    "*://*.omnichat.rt.ru/*"
+    "*://omnichat.rt.ru/*"
   ],
   "action": {
     "default_popup": "popup.html",
@@ -22,15 +20,20 @@
     }
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background/main.js"
   },
   "content_scripts": [
     {
       "matches": [
-        "*://omnichat.rt.ru/*",
-        "*://*.omnichat.rt.ru/*"
+        "*://omnichat.rt.ru/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "shared/config.js",
+        "shared/logger.js",
+        "content/responder.js",
+        "content/scanner.js",
+        "content/main.js"
+      ],
       "run_at": "document_start",
       "all_frames": true
     }
