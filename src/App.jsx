@@ -151,6 +151,20 @@ function App() {
 
   return (
     <div className="app">
+      {/* Birthday message (shows only once) */}
+      {currentSceneId === story.startScene && !localStorage.getItem('birthday_shown') && (
+        <div className="birthday-message">
+          <h1>🎂 С Днем Рождения, Сергей! 🎂</h1>
+          <p>Эта интерактивная история - подарок для тебя</p>
+          <button onClick={() => {
+            localStorage.setItem('birthday_shown', 'true');
+            document.querySelector('.birthday-message').style.display = 'none';
+          }}>
+            Начать путешествие
+          </button>
+        </div>
+      )}
+
       {/* Menu button */}
       <button 
         className="menu-button"
@@ -219,20 +233,6 @@ function App() {
 
       {/* Main comic view */}
       <ComicView scene={currentScene} onChoice={handleChoice} />
-      
-      {/* Birthday message (shows only once) */}
-      {currentSceneId === story.startScene && !localStorage.getItem('birthday_shown') && (
-        <div className="birthday-message">
-          <h1>🎂 С Днем Рождения, Сергей! 🎂</h1>
-          <p>Эта интерактивная история - подарок для тебя</p>
-          <button onClick={() => {
-            localStorage.setItem('birthday_shown', 'true');
-            document.querySelector('.birthday-message').style.display = 'none';
-          }}>
-            Начать путешествие
-          </button>
-        </div>
-      )}
     </div>
   );
 }
