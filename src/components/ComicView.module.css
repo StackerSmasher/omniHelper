@@ -1,3 +1,4 @@
+/* Base scene styles */
 .scene {
     width: 100vw;
     height: 100vh;
@@ -6,46 +7,423 @@
     justify-content: flex-end;
     align-items: center;
     padding: 20px;
+    background: linear-gradient(180deg, #0a0a0a 0%, #1a0f1f 100%);
+    position: relative;
+    overflow: hidden;
+    animation: sceneEnter 1s ease-out;
 }
 
+@keyframes sceneEnter {
+    from {
+        opacity: 0;
+        filter: blur(10px);
+    }
+    to {
+        opacity: 1;
+        filter: blur(0);
+    }
+}
+
+/* Atmospheric scene variations */
+.agentScene {
+    background: radial-gradient(ellipse at center, #001122 0%, #000511 50%, #000000 100%);
+    animation: agentPulse 4s infinite;
+}
+
+@keyframes agentPulse {
+    0%, 100% { filter: brightness(1) hue-rotate(0deg); }
+    50% { filter: brightness(1.2) hue-rotate(10deg); }
+}
+
+.memoryScene {
+    background: linear-gradient(135deg, #1a0f1f 0%, #2a1a3a 50%, #0f0a1f 100%);
+    filter: sepia(0.2);
+}
+
+.choiceScene {
+    background: conic-gradient(from 180deg at 50% 50%, #0a0a0a, #1a1a2a, #0a0a0a);
+    animation: choiceRotate 20s linear infinite;
+}
+
+@keyframes choiceRotate {
+    from { filter: hue-rotate(0deg); }
+    to { filter: hue-rotate(360deg); }
+}
+
+.oblivionScene {
+    background: radial-gradient(circle at center, transparent 0%, #000000 100%);
+    animation: oblivionFade 3s infinite alternate;
+}
+
+@keyframes oblivionFade {
+    from { opacity: 0.8; }
+    to { opacity: 1; }
+}
+
+/* Particle effects */
+.particles {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
+.particle {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: #00ffff;
+    border-radius: 50%;
+    opacity: 0;
+    animation: floatUp linear infinite;
+    box-shadow: 0 0 10px #00ffff;
+}
+
+@keyframes floatUp {
+    0% {
+        opacity: 0;
+        transform: translateY(100vh) translateX(0);
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-100vh) translateX(100px);
+    }
+}
+
+/* Glitch overlay effect */
+.glitchOverlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    opacity: 0;
+    animation: glitch 10s infinite;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(255, 0, 64, 0.03) 2px,
+        rgba(255, 0, 64, 0.03) 4px
+    );
+}
+
+@keyframes glitch {
+    0%, 90%, 100% {
+        opacity: 0;
+    }
+    92% {
+        opacity: 1;
+        transform: translateX(-5px);
+    }
+    94% {
+        opacity: 1;
+        transform: translateX(5px);
+    }
+    96% {
+        opacity: 1;
+        transform: translateX(-2px);
+    }
+}
+
+/* Dialogue container */
+.dialogueContainer {
+    max-width: 900px;
+    width: 100%;
+    z-index: 10;
+}
+
+/* Dialogue box */
 .dialogueBox {
-    background: rgba(0, 0, 0, 0.7);
-    border: 2px solid #ff0040;
-    padding: 20px;
+    background: linear-gradient(135deg, 
+        rgba(0, 0, 0, 0.9) 0%, 
+        rgba(10, 10, 10, 0.8) 50%, 
+        rgba(0, 0, 0, 0.9) 100%);
+    border: 1px solid;
+    border-image: linear-gradient(45deg, #ff0040, #00ffff, #ff0040) 1;
+    padding: 30px;
     margin-bottom: 20px;
     border-radius: 5px;
-    max-width: 800px;
-    width: 100%;
-    text-shadow: 0 0 5px #ff0040;
+    backdrop-filter: blur(10px);
+    position: relative;
+    box-shadow: 
+        0 0 50px rgba(255, 0, 64, 0.2),
+        inset 0 0 30px rgba(0, 255, 255, 0.05);
+    animation: dialogueGlow 3s infinite alternate;
 }
 
-.dialogueBox p {
-    margin: 0;
-    padding: 0;
+@keyframes dialogueGlow {
+    from {
+        box-shadow: 
+            0 0 50px rgba(255, 0, 64, 0.2),
+            inset 0 0 30px rgba(0, 255, 255, 0.05);
+    }
+    to {
+        box-shadow: 
+            0 0 70px rgba(255, 0, 64, 0.3),
+            inset 0 0 40px rgba(0, 255, 255, 0.1);
+    }
 }
 
+/* Dialogue lines */
+.dialogueLine {
+    margin-bottom: 15px;
+    opacity: 0;
+    animation: fadeIn 0.5s forwards;
+    font-family: 'Courier New', monospace;
+    line-height: 1.6;
+}
+
+.character {
+    color: #ff0040;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 14px;
+    text-shadow: 0 0 10px rgba(255, 0, 64, 0.8);
+    display: inline-block;
+    margin-right: 10px;
+}
+
+.message {
+    color: #e0e0e0;
+    font-size: 16px;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+}
+
+/* Typing cursor */
+.cursor {
+    display: inline-block;
+    width: 10px;
+    height: 20px;
+    background: #00ffff;
+    margin-left: 2px;
+    animation: blink 1s infinite;
+    vertical-align: text-bottom;
+}
+
+@keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+/* Choices */
 .choices {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    width: 100%;
-    max-width: 800px;
+    gap: 15px;
+    opacity: 0;
+    animation: fadeIn 1s forwards;
 }
 
-.choices button {
-    background: #0a0a0a;
+.choiceButton {
+    background: linear-gradient(90deg, 
+        rgba(0, 10, 10, 0.9) 0%, 
+        rgba(0, 20, 20, 0.8) 50%, 
+        rgba(0, 10, 10, 0.9) 100%);
     color: #00ffff;
     border: 1px solid #00ffff;
-    padding: 15px;
+    padding: 20px 25px;
     font-family: 'Courier New', monospace;
     font-size: 16px;
     cursor: pointer;
     text-align: left;
-    transition: background 0.3s, color 0.3s;
+    transition: all 0.3s ease;
     text-shadow: 0 0 5px #00ffff;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 15px;
 }
 
-.choices button:hover {
-    background: #00ffff;
-    color: #0a0a0a;
+.choiceButton::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, 
+        transparent, 
+        rgba(0, 255, 255, 0.2), 
+        transparent);
+    transition: left 0.5s;
+}
+
+.choiceButton:hover::before {
+    left: 100%;
+}
+
+.choiceButton:hover {
+    background: linear-gradient(90deg, 
+        rgba(0, 255, 255, 0.1) 0%, 
+        rgba(0, 255, 255, 0.2) 50%, 
+        rgba(0, 255, 255, 0.1) 100%);
+    border-color: #00ffff;
+    color: #ffffff;
+    transform: translateX(10px);
+    box-shadow: 
+        0 0 30px rgba(0, 255, 255, 0.5),
+        inset 0 0 20px rgba(0, 255, 255, 0.1);
+}
+
+.choiceButton:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.choiceButton.selected {
+    background: linear-gradient(90deg, 
+        rgba(0, 255, 255, 0.3) 0%, 
+        rgba(0, 255, 255, 0.4) 50%, 
+        rgba(0, 255, 255, 0.3) 100%);
+    border-color: #00ffff;
+    color: #ffffff;
+    animation: selectedPulse 0.5s;
+    box-shadow: 
+        0 0 50px rgba(0, 255, 255, 0.8),
+        inset 0 0 30px rgba(0, 255, 255, 0.3);
+}
+
+.choiceButton.notSelected {
+    opacity: 0.3;
+    transform: scale(0.95);
+}
+
+@keyframes selectedPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+/* Choice glyph */
+.choiceGlyph {
+    font-size: 20px;
+    color: #ff0040;
+    text-shadow: 0 0 10px #ff0040;
+    animation: glyphRotate 2s linear infinite;
+}
+
+@keyframes glyphRotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.choiceText {
+    flex: 1;
+}
+
+/* Scene indicator */
+.sceneIndicator {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    gap: 10px;
+}
+
+.indicatorDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ff0040;
+    opacity: 0.3;
+    animation: indicatorPulse 2s infinite;
+}
+
+.indicatorDot:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.indicatorDot:nth-child(2) {
+    animation-delay: 0.5s;
+}
+
+.indicatorDot:nth-child(3) {
+    animation-delay: 1s;
+}
+
+@keyframes indicatorPulse {
+    0%, 100% { 
+        opacity: 0.3; 
+        transform: scale(1);
+    }
+    50% { 
+        opacity: 1; 
+        transform: scale(1.5);
+    }
+}
+
+/* Loading screen */
+.loading {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #000;
+}
+
+.loadingText {
+    color: #00ffff;
+    font-size: 24px;
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 0 20px #00ffff;
+    animation: loadingPulse 1s infinite;
+}
+
+@keyframes loadingPulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+/* Fade in animation */
+.fadeIn {
+    animation: fadeIn 0.5s forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .dialogueBox {
+        padding: 20px;
+    }
+    
+    .character {
+        font-size: 12px;
+        letter-spacing: 1px;
+    }
+    
+    .message {
+        font-size: 14px;
+    }
+    
+    .choiceButton {
+        padding: 15px 20px;
+        font-size: 14px;
+    }
+    
+    .choiceGlyph {
+        font-size: 16px;
+    }
 }
