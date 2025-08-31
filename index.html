@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Агент Пыли</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            height: 100vh;
+            position: relative;
+        }
+
+        .scene {
+            width: 100%;
+            height: 100vh;
+            position: relative;
+            background: linear-gradient(180deg, #0a0a0a 0%, #1a0f1f 100%);
+        }
+
+        /* Мерцающий свет */
+        @keyframes flicker {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+            75% { opacity: 0.8; }
+            85% { opacity: 0.4; }
+        }
+
+        .apartment {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            animation: flicker 2s infinite;
+        }
+
+        /* Окно с видом на ночной город */
+        .window {
+            position: absolute;
+            top: 10%;
+            left: 10%;
+            width: 300px;
+            height: 400px;
+            background: linear-gradient(180deg, #1a1a3a 0%, #2a2a4a 50%, #3a3a5a 100%);
+            border: 3px solid #333;
+            box-shadow: 0 0 50px rgba(100, 100, 200, 0.3);
+        }
+
+        .city-lights {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(2px 2px at 20% 30%, yellow, transparent),
+                radial-gradient(2px 2px at 40% 70%, orange, transparent),
+                radial-gradient(2px 2px at 60% 40%, yellow, transparent),
+                radial-gradient(2px 2px at 80% 60%, orange, transparent),
+                radial-gradient(2px 2px at 30% 80%, yellow, transparent);
+            background-size: 100% 100%;
+            animation: twinkle 3s infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Чёрная открытка */
+        .postcard {
+            position: absolute;
+            top: 60%;
+            left: 15%;
+            width: 200px;
+            height: 120px;
+            background: #0a0a0a;
+            border: 1px solid #ff0040;
+            transform: rotate(-5deg);
+            box-shadow: 0 10px 30px rgba(255, 0, 64, 0.5);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .postcard:hover {
+            transform: rotate(0deg) scale(1.1);
+            box-shadow: 0 15px 40px rgba(255, 0, 64, 0.8);
+        }
+
+        .metro-map {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            opacity: 0.8;
+        }
+
+        .metro-line {
+            stroke: #ff0040;
+            stroke-width: 1;
+            fill: none;
+            filter: drop-shadow(0 0 3px #ff0040);
+            animation: pulse 2s infinite;
+        }
+
+        .cable-line {
+            stroke: #00ffff;
+            stroke-width: 0.5;
+            fill: none;
+            opacity: 0.6;
+            filter: drop-shadow(0 0 2px #00ffff);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+
+        /* Монитор с Агентом Пыли */
+        .monitor {
+            position: absolute;
+            top: 20%;
+            right: 15%;
+            width: 400px;
+            height: 300px;
+            background: #000;
+            border: 15px solid #222;
+            border-radius: 5px;
+            box-shadow: 0 0 100px rgba(0, 255, 255, 0.5);
+            overflow: hidden;
+        }
+
+        .screen {
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at center, #001122 0%, #000 100%);
+            position: relative;
+            animation: screenFlicker 0.1s infinite;
+        }
+
+        @keyframes screenFlicker {
+            0%, 100% { filter: brightness(1); }
+            50% { filter: brightness(0.95); }
+        }
+
+        /* Агент Пыли */
+        .dust-agent {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 150px;
+            height: 200px;
+        }
+
+        .agent-head {
+            width: 80px;
+            height: 80px;
+            background: radial-gradient(circle, transparent 30%, #00ffff 40%, transparent 50%);
+            margin: 0 auto;
+            border-radius: 50%;
+            position: relative;
+            animation: glitch 3s infinite;
+        }
+
+        @keyframes glitch {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-2px); }
+            40% { transform: translateX(2px); }
+            60% { transform: translateX(-1px); }
+        }
+
+        .agent-eyes {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .eye {
+            width: 15px;
+            height: 15px;
+            background: #ff0040;
+            border-radius: 50%;
+            box-shadow: 0 0 20px #ff0040;
+            animation: blink 4s infinite;
+        }
+
+        @keyframes blink {
+            0%, 90%, 100% { transform: scaleY(1); }
+            95% { transform: scaleY(0.1); }
+        }
+
+        .agent-body {
+            width: 100px;
+            height: 120px;
+            margin: 10px auto;
+            background: linear-gradient(180deg, rgba(0,255,255,0.1) 0%, rgba(0,255,255,0.3) 100%);
+            clip-path: polygon(30% 0%, 70% 0%, 100% 100%, 0% 100%);
+            position: relative;
+        }
+
+        /* Частицы пыли */
+        .dust-particles {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+        }
+
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: #00ffff;
+            border-radius: 50%;
+            animation: float 10s infinite linear;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(100vh) translateX(0);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100vh) translateX(100px);
+                opacity: 0;
+            }
+        }
+
+        /* Текст сообщения */
+        .message {
+            position: absolute;
+            bottom: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            font-size: 14px;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+            max-width: 80%;
+            animation: typewriter 3s steps(40) forwards;
+            overflow: hidden;
+            white-space: nowrap;
+            border-right: 2px solid #00ffff;
+        }
+
+        @keyframes typewriter {
+            from { width: 0; }
+            to { width: 100%; }
+        }
+
+        /* Три узла */
+        .nodes {
+            position: absolute;
+            bottom: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 50px;
+        }
+
+        .node {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #ff0040;
+            border-radius: 50%;
+            position: relative;
+            animation: rotate 4s infinite linear;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .node::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            background: radial-gradient(circle, #ff0040 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        /* Имя Сергей */
+        .name {
+            position: absolute;
+            top: 5%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            letter-spacing: 5px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="scene">
+        <div class="apartment">
+            <!-- Имя -->
+            <div class="name">СЕРГЕЙ</div>
+            
+            <!-- Окно с видом на город -->
+            <div class="window">
+                <div class="city-lights"></div>
+            </div>
+            
+            <!-- Чёрная открытка -->
+            <div class="postcard">
+                <svg class="metro-map" viewBox="0 0 200 120">
+                    <!-- Линии метро -->
+                    <path class="metro-line" d="M10,60 L50,30 L100,30 L150,60 L190,60"/>
+                    <path class="metro-line" d="M10,90 L60,90 L100,60 L140,90 L190,90"/>
+                    <path class="metro-line" d="M100,10 L100,110"/>
+                    
+                    <!-- Кабели -->
+                    <path class="cable-line" d="M20,20 Q50,40 80,20 T140,20"/>
+                    <path class="cable-line" d="M30,100 Q70,80 110,100 T170,100"/>
+                    <path class="cable-line" d="M180,30 Q160,50 180,70"/>
+                </svg>
+            </div>
+            
+            <!-- Монитор -->
+            <div class="monitor">
+                <div class="screen">
+                    <div class="dust-agent">
+                        <div class="agent-head">
+                            <div class="agent-eyes">
+                                <div class="eye"></div>
+                                <div class="eye"></div>
+                            </div>
+                        </div>
+                        <div class="agent-body"></div>
+                    </div>
+                    
+                    <!-- Частицы пыли -->
+                    <div class="dust-particles">
+                        <div class="particle" style="left: 10%; animation-delay: 0s;"></div>
+                        <div class="particle" style="left: 20%; animation-delay: 1s;"></div>
+                        <div class="particle" style="left: 30%; animation-delay: 2s;"></div>
+                        <div class="particle" style="left: 40%; animation-delay: 3s;"></div>
+                        <div class="particle" style="left: 50%; animation-delay: 4s;"></div>
+                        <div class="particle" style="left: 60%; animation-delay: 5s;"></div>
+                        <div class="particle" style="left: 70%; animation-delay: 6s;"></div>
+                        <div class="particle" style="left: 80%; animation-delay: 7s;"></div>
+                        <div class="particle" style="left: 90%; animation-delay: 8s;"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Сообщение -->
+            <div class="message">
+                Узнай правду о судьбе в ночь рождения... Пройди три узла...
+            </div>
+            
+            <!-- Три узла -->
+            <div class="nodes">
+                <div class="node"></div>
+                <div class="node"></div>
+                <div class="node"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Добавляем интерактивность
+        document.querySelector('.postcard').addEventListener('click', function() {
+            this.style.transform = 'rotate(180deg) scale(1.2)';
+            setTimeout(() => {
+                this.style.transform = 'rotate(-5deg)';
+            }, 1000);
+        });
+
+        // Случайное мерцание для монитора
+        setInterval(() => {
+            const screen = document.querySelector('.screen');
+            if (Math.random() > 0.9) {
+                screen.style.filter = 'brightness(0.5) hue-rotate(180deg)';
+                setTimeout(() => {
+                    screen.style.filter = 'brightness(1)';
+                }, 100);
+            }
+        }, 500);
+    </script>
+</body>
+</html>
