@@ -115,6 +115,40 @@ function App() {
       }
     } else {
       console.error(`Scene "${nextSceneId}" not found!`);
+      
+      // Show error to user with fallback
+      const errorMessage = `Фрагмент истории "${nextSceneId}" пока не написан. Возвращаемся к началу узлов.`;
+      
+      // Create error notification
+      const errorEl = document.createElement('div');
+      errorEl.className = 'error-notification';
+      errorEl.innerHTML = `
+        <div class="error-content">
+          <div class="error-title">⚠️ Фрагмент не найден</div>
+          <div class="error-description">${errorMessage}</div>
+        </div>
+      `;
+      document.body.appendChild(errorEl);
+      
+      setTimeout(() => {
+        errorEl.classList.add('show');
+      }, 100);
+      
+      setTimeout(() => {
+        errorEl.classList.remove('show');
+        setTimeout(() => {
+          if (document.body.contains(errorEl)) {
+            document.body.removeChild(errorEl);
+          }
+        }, 300);
+      }, 4000);
+      
+      // Fallback to three_nodes_begin or prologue
+      const fallbackScene = story.scenes['three_nodes_begin'] ? 'three_nodes_begin' : story.startScene;
+      setTimeout(() => {
+        setCurrentSceneId(fallbackScene);
+        setVisitedScenes(prev => new Set([...prev, fallbackScene]));
+      }, 2000);
     }
   };
 
