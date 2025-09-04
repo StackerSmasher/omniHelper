@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import styles from './ComicView.module.css';
 import { TextRenderer } from '../utils/TextRenderer';
 import { PerformanceMonitor } from '../utils/PerformanceMonitor';
@@ -35,8 +35,8 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
     if (!scene) return;
     
     // Reset state when scene changes
-    setRenderedDialogue([]);
-    setCurrentLineIndex(0);
+    setDisplayedText([]);
+    setCurrentDialogueIndex(0);
     setIsTyping(true);
     setShowChoices(false);
     setSelectedChoice(null);
@@ -44,35 +44,35 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
   }, [scene]);
 
   useEffect(() => {
-    if (!scene || currentLineIndex >= scene.dialogue.length) {
-      if (currentLineIndex >= scene.dialogue.length && !showChoices) {
+    if (!scene || currentDialogueIndex >= scene.dialogue.length) {
+      if (currentDialogueIndex >= scene.dialogue.length && !showChoices) {
         setTimeout(() => setShowChoices(true), 500);
       }
       return;
     }
 
-    const currentLine = scene.dialogue[currentLineIndex];
+    const currentLine = scene.dialogue[currentDialogueIndex];
     const text = `${currentLine.character}: ${currentLine.text}`;
     let charIndex = 0;
     
     const typewriterInterval = setInterval(() => {
       if (charIndex <= text.length) {
-        setRenderedDialogue(prev => {
+        setDisplayedText(prev => {
           const newText = [...prev];
-          newText[currentLineIndex] = text.substring(0, charIndex);
+          newText[currentDialogueIndex] = text.substring(0, charIndex);
           return newText;
         });
         charIndex++;
       } else {
         clearInterval(typewriterInterval);
         setTimeout(() => {
-          setCurrentLineIndex(prev => prev + 1);
+          setCurrentDialogueIndex(prev => prev + 1);
         }, 1500);
       }
     }, 30);
 
     return () => clearInterval(typewriterInterval);
-  }, [scene, currentLineIndex, showChoices]);
+  }, [scene, currentDialogueIndex]);
 
   const handleChoice = (choice, index) => {
     setSelectedChoice(index);
@@ -640,20 +640,20 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
             willChange: isTyping ? 'contents' : 'auto' // Optimize for content changes
           }}
         >
-          {scene.dialogue.map((line, index) => {
-            if (index > currentLineIndex) return null;
+          {renderedDialogue.map((line, index) => {
+            if (!line) return null;
             
             // Measure render performance for each line
             const renderTimer = performanceMonitorRef.current?.measureTextRender(`dialogue-line-${index}`);
             
             const lineElement = (
               <div 
-                key={`line-${index}`} 
+                key={line.key || `line-${index}`} 
                 className={`${styles.dialogueLine} ${styles.fadeIn}`}
                 style={{ 
                   animationDelay: `${index * 0.2}s`,
                   transform: 'translateZ(0)', // Force hardware acceleration
-                  willChange: 'transform' // Optimize for animation
+                  willChange: line.isComplete ? 'auto' : 'transform' // Optimize for animation
                 }}
                 ref={(el) => {
                   if (el && renderTimer) {
@@ -664,8 +664,8 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
               >
                 <CharacterName character={line.character} />
                 <MessageText 
-                  message={renderedDialogue[index] || ''} 
-                  isComplete={index < currentLineIndex}
+                  message={line.message} 
+                  isComplete={line.isComplete}
                 />
               </div>
             );

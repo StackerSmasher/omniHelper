@@ -1,189 +1,310 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import story from './story/story.json';
-import ComicView from './components/ComicView';
 import './App.css';
+
+// Lazy load ComicView for better initial load performance
+const ComicView = lazy(() => import('./components/ComicView'));
+
+// Web Worker for heavy computations (if needed)
+const useWebWorker = (workerFunction) => {
+  const workerRef = useRef(null);
+  
+  useEffect(() => {
+    const blob = new Blob([`(${workerFunction.toString()})()`], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
+    workerRef.current = new Worker(workerUrl);
+    
+    return () => {
+      workerRef.current?.terminate();
+      URL.revokeObjectURL(workerUrl);
+    };
+  }, []);
+  
+  return workerRef.current;
+};
 
 function App() {
   const [currentSceneId, setCurrentSceneId] = useState(story.startScene);
-  const [visitedScenes, setVisitedScenes] = useState(new Set([story.startScene]));
+  const [visitedScenes, setVisitedScenes] = useState(() => new Set([story.startScene]));
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
   const [achievements, setAchievements] = useState([]);
-  const [completedNodes, setCompletedNodes] = useState(new Set());
-
-  // Load saved progress
+  const [completedNodes, setCompletedNodes] = useState(() => new Set());
+  const [showBirthdayMessage, setShowBirthdayMessage] = useState(false);
+  
+  // Performance optimizations
+  const audioContextRef = useRef(null);
+  const achievementQueueRef = useRef([]);
+  const saveTimeoutRef = useRef(null);
+  
+  // Memoized current scene
+  const currentScene = useMemo(() => {
+    return story.scenes[currentSceneId];
+  }, [currentSceneId]);
+  
+  // Memoized progress calculation
+  const progress = useMemo(() => {
+    return Math.round((visitedScenes.size / Object.keys(story.scenes).length) * 100);
+  }, [visitedScenes]);
+  
+  // Initialize audio context lazily
+  const getAudioContext = useCallback(() => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return audioContextRef.current;
+  }, []);
+  
+  // Load saved progress with error handling
   useEffect(() => {
-    const savedProgress = localStorage.getItem('sergey_story_progress');
-    if (savedProgress) {
-      const { scene, visited, achievements: savedAchievements, nodes } = JSON.parse(savedProgress);
-      setCurrentSceneId(scene);
-      setVisitedScenes(new Set(visited));
-      setAchievements(savedAchievements || []);
-      setCompletedNodes(new Set(nodes || []));
+    try {
+      const savedProgress = localStorage.getItem('sergey_story_progress');
+      if (savedProgress) {
+        const parsed = JSON.parse(savedProgress);
+        setCurrentSceneId(parsed.scene || story.startScene);
+        setVisitedScenes(new Set(parsed.visited || [story.startScene]));
+        setAchievements(parsed.achievements || []);
+        setCompletedNodes(new Set(parsed.nodes || []));
+      }
+      
+      // Check birthday message
+      const birthdayShown = localStorage.getItem('birthday_shown');
+      setShowBirthdayMessage(!birthdayShown);
+    } catch (error) {
+      console.warn('Failed to load saved progress:', error);
+    }
+  }, []);
+  
+  // Debounced save progress
+  const saveProgress = useCallback(() => {
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
     
-    // Clear birthday flag for testing - remove this line after testing
-    localStorage.removeItem('birthday_shown');
-  }, []);
-
-  // Save progress
-  useEffect(() => {
-    const progressData = {
-      scene: currentSceneId,
-      visited: Array.from(visitedScenes),
-      achievements,
-      nodes: Array.from(completedNodes)
-    };
-    localStorage.setItem('sergey_story_progress', JSON.stringify(progressData));
+    // Debounce saves to reduce localStorage writes
+    saveTimeoutRef.current = setTimeout(() => {
+      try {
+        const progressData = {
+          scene: currentSceneId,
+          visited: Array.from(visitedScenes),
+          achievements,
+          nodes: Array.from(completedNodes)
+        };
+        localStorage.setItem('sergey_story_progress', JSON.stringify(progressData));
+      } catch (error) {
+        console.warn('Failed to save progress:', error);
+      }
+    }, 1000); // Save after 1 second of inactivity
   }, [currentSceneId, visitedScenes, achievements, completedNodes]);
-
-  // Check for achievements
+  
+  // Save progress when state changes
   useEffect(() => {
-    checkAchievements();
-  }, [currentSceneId, visitedScenes]);
-
-  const checkAchievements = () => {
+    saveProgress();
+    
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [saveProgress]);
+  
+  // Optimized achievement checking
+  const checkAchievements = useCallback(() => {
     const newAchievements = [];
     
-    // First steps achievement
-    if (visitedScenes.size >= 5 && !achievements.includes('first_steps')) {
-      newAchievements.push('first_steps');
-      showAchievement('Первые шаги', 'Исследовано 5 сцен');
-    }
+    // Achievement checks
+    const achievementChecks = [
+      {
+        id: 'first_steps',
+        condition: visitedScenes.size >= 5,
+        title: 'Первые шаги',
+        description: 'Исследовано 5 сцен'
+      },
+      {
+        id: 'memory_keeper',
+        condition: visitedScenes.has('node_memory'),
+        title: 'Хранитель памяти',
+        description: 'Пройден узел Памяти'
+      },
+      {
+        id: 'decision_maker',
+        condition: visitedScenes.has('node_choice'),
+        title: 'Творец выбора',
+        description: 'Пройден узел Выбора'
+      },
+      {
+        id: 'void_walker',
+        condition: visitedScenes.has('node_oblivion'),
+        title: 'Ходящий по пустоте',
+        description: 'Пройден узел Забвения'
+      },
+      {
+        id: 'enlightened',
+        condition: visitedScenes.has('enlightenment'),
+        title: 'Просветленный',
+        description: 'Достигнуто просветление'
+      },
+      {
+        id: 'explorer',
+        condition: visitedScenes.size >= 20,
+        title: 'Исследователь',
+        description: 'Открыто 20 различных путей'
+      }
+    ];
     
-    // Memory node achievement
-    if (visitedScenes.has('node_memory') && !achievements.includes('memory_keeper')) {
-      newAchievements.push('memory_keeper');
-      showAchievement('Хранитель памяти', 'Пройден узел Памяти');
-    }
+    achievementChecks.forEach(check => {
+      if (check.condition && !achievements.includes(check.id)) {
+        newAchievements.push(check);
+      }
+    });
     
-    // Choice node achievement
-    if (visitedScenes.has('node_choice') && !achievements.includes('decision_maker')) {
-      newAchievements.push('decision_maker');
-      showAchievement('Творец выбора', 'Пройден узел Выбора');
-    }
-    
-    // Oblivion node achievement
-    if (visitedScenes.has('node_oblivion') && !achievements.includes('void_walker')) {
-      newAchievements.push('void_walker');
-      showAchievement('Ходящий по пустоте', 'Пройден узел Забвения');
-    }
-    
-    // Enlightenment achievement
-    if (visitedScenes.has('enlightenment') && !achievements.includes('enlightened')) {
-      newAchievements.push('enlightened');
-      showAchievement('Просветленный', 'Достигнуто просветление');
-    }
-    
-    // Explorer achievement
-    if (visitedScenes.size >= 20 && !achievements.includes('explorer')) {
-      newAchievements.push('explorer');
-      showAchievement('Исследователь', 'Открыто 20 различных путей');
-    }
-    
+    // Queue achievements for display
     if (newAchievements.length > 0) {
-      setAchievements(prev => [...prev, ...newAchievements]);
+      achievementQueueRef.current.push(...newAchievements);
+      processAchievementQueue();
+      
+      setAchievements(prev => [
+        ...prev,
+        ...newAchievements.map(a => a.id)
+      ]);
     }
-  };
-
-  const showAchievement = (title, description) => {
-    const achievementEl = document.createElement('div');
-    achievementEl.className = 'achievement-notification';
-    achievementEl.innerHTML = `
-      <div class="achievement-icon">🏆</div>
-      <div class="achievement-content">
-        <div class="achievement-title">${title}</div>
-        <div class="achievement-description">${description}</div>
-      </div>
-    `;
-    document.body.appendChild(achievementEl);
+  }, [visitedScenes, achievements]);
+  
+  // Process achievement notifications one at a time
+  const processAchievementQueue = useCallback(() => {
+    if (achievementQueueRef.current.length === 0) return;
     
-    setTimeout(() => {
-      achievementEl.classList.add('show');
-    }, 100);
+    const achievement = achievementQueueRef.current.shift();
+    showAchievement(achievement.title, achievement.description);
     
+    // Process next achievement after delay
     setTimeout(() => {
-      achievementEl.classList.remove('show');
-      setTimeout(() => {
-        document.body.removeChild(achievementEl);
-      }, 300);
-    }, 3000);
-  };
-
-  const handleChoice = (nextSceneId) => {
-    if (story.scenes[nextSceneId]) {
-      // Track completed nodes
-      if (['node_memory', 'node_choice', 'node_oblivion'].includes(currentSceneId)) {
-        setCompletedNodes(prev => new Set([...prev, currentSceneId]));
-      }
-      
-      setCurrentSceneId(nextSceneId);
-      setVisitedScenes(prev => new Set([...prev, nextSceneId]));
-      
-      // Play sound effect
-      if (soundEnabled) {
-        playSound('choice');
-      }
-    } else {
-      console.error(`Scene "${nextSceneId}" not found!`);
-      
-      // Show error to user with fallback
-      const errorMessage = `Фрагмент истории "${nextSceneId}" пока не написан. Возвращаемся к началу узлов.`;
-      
-      // Create error notification
-      const errorEl = document.createElement('div');
-      errorEl.className = 'error-notification';
-      errorEl.innerHTML = `
-        <div class="error-content">
-          <div class="error-title">⚠️ Фрагмент не найден</div>
-          <div class="error-description">${errorMessage}</div>
+      processAchievementQueue();
+    }, 3500);
+  }, []);
+  
+  // Optimized achievement notification
+  const showAchievement = useCallback((title, description) => {
+    // Create element only when needed
+    requestAnimationFrame(() => {
+      const achievementEl = document.createElement('div');
+      achievementEl.className = 'achievement-notification';
+      achievementEl.innerHTML = `
+        <div class="achievement-icon">🏆</div>
+        <div class="achievement-content">
+          <div class="achievement-title">${title}</div>
+          <div class="achievement-description">${description}</div>
         </div>
       `;
-      document.body.appendChild(errorEl);
+      document.body.appendChild(achievementEl);
+      
+      // Force reflow then add animation class
+      achievementEl.offsetHeight;
+      achievementEl.classList.add('show');
       
       setTimeout(() => {
-        errorEl.classList.add('show');
-      }, 100);
-      
-      setTimeout(() => {
-        errorEl.classList.remove('show');
+        achievementEl.classList.remove('show');
         setTimeout(() => {
-          if (document.body.contains(errorEl)) {
-            document.body.removeChild(errorEl);
+          if (document.body.contains(achievementEl)) {
+            document.body.removeChild(achievementEl);
           }
         }, 300);
-      }, 4000);
+      }, 3000);
+    });
+  }, []);
+  
+  // Check achievements when scenes change
+  useEffect(() => {
+    checkAchievements();
+  }, [visitedScenes]);
+  
+  // Optimized choice handler
+  const handleChoice = useCallback((nextSceneId) => {
+    if (!story.scenes[nextSceneId]) {
+      console.error(`Scene "${nextSceneId}" not found!`);
       
-      // Fallback to three_nodes_begin or prologue
+      // Show error notification
+      const showError = () => {
+        const errorEl = document.createElement('div');
+        errorEl.className = 'error-notification';
+        errorEl.innerHTML = `
+          <div class="error-content">
+            <div class="error-title">⚠️ Фрагмент не найден</div>
+            <div class="error-description">Фрагмент истории "${nextSceneId}" пока не написан. Возвращаемся к началу узлов.</div>
+          </div>
+        `;
+        document.body.appendChild(errorEl);
+        
+        requestAnimationFrame(() => {
+          errorEl.classList.add('show');
+          
+          setTimeout(() => {
+            errorEl.classList.remove('show');
+            setTimeout(() => {
+              if (document.body.contains(errorEl)) {
+                document.body.removeChild(errorEl);
+              }
+            }, 300);
+          }, 4000);
+        });
+      };
+      
+      showError();
+      
+      // Fallback to safe scene
       const fallbackScene = story.scenes['three_nodes_begin'] ? 'three_nodes_begin' : story.startScene;
       setTimeout(() => {
         setCurrentSceneId(fallbackScene);
         setVisitedScenes(prev => new Set([...prev, fallbackScene]));
       }, 2000);
-    }
-  };
-
-  const playSound = (type) => {
-    // Create a simple sound effect using Web Audio API
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    if (type === 'choice') {
-      oscillator.frequency.value = 440;
-      oscillator.type = 'sine';
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      return;
     }
     
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.5);
-  };
-
-  const resetProgress = () => {
+    // Track completed nodes
+    if (['node_memory', 'node_choice', 'node_oblivion'].includes(currentSceneId)) {
+      setCompletedNodes(prev => new Set([...prev, currentSceneId]));
+    }
+    
+    // Update scene
+    setCurrentSceneId(nextSceneId);
+    setVisitedScenes(prev => new Set([...prev, nextSceneId]));
+    
+    // Play sound effect
+    if (soundEnabled) {
+      playSound('choice');
+    }
+  }, [currentSceneId, soundEnabled]);
+  
+  // Optimized sound playback
+  const playSound = useCallback((type) => {
+    if (!soundEnabled) return;
+    
+    try {
+      const audioContext = getAudioContext();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      if (type === 'choice') {
+        oscillator.frequency.value = 440;
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      }
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+      console.warn('Failed to play sound:', error);
+    }
+  }, [soundEnabled, getAudioContext]);
+  
+  // Reset progress handler
+  const resetProgress = useCallback(() => {
     localStorage.removeItem('sergey_story_progress');
     localStorage.removeItem('birthday_shown');
     setCurrentSceneId(story.startScene);
@@ -191,45 +312,46 @@ function App() {
     setAchievements([]);
     setCompletedNodes(new Set());
     setShowMenu(false);
-  };
-
-  const currentScene = story.scenes[currentSceneId];
-  const progress = Math.round((visitedScenes.size / Object.keys(story.scenes).length) * 100);
-
+    setShowBirthdayMessage(true);
+  }, []);
+  
+  // Handle birthday message dismissal
+  const handleBirthdayDismiss = useCallback(() => {
+    localStorage.setItem('birthday_shown', 'true');
+    setShowBirthdayMessage(false);
+  }, []);
+  
   return (
     <div className="app">
-      {/* Birthday message (shows only once) */}
-      {currentSceneId === story.startScene && !localStorage.getItem('birthday_shown') && (
+      {/* Birthday message */}
+      {showBirthdayMessage && currentSceneId === story.startScene && (
         <div className="birthday-message">
           <h1>🎂 С Днем Рождения, Сергей! 🎂</h1>
           <p>Эта интерактивная история - подарок для тебя</p>
-          <button onClick={() => {
-            localStorage.setItem('birthday_shown', 'true');
-            document.querySelector('.birthday-message').style.display = 'none';
-          }}>
+          <button onClick={handleBirthdayDismiss}>
             Начать путешествие
           </button>
         </div>
       )}
-
+      
       {/* Menu button */}
       <button 
         className="menu-button"
-        onClick={() => setShowMenu(!showMenu)}
+        onClick={() => setShowMenu(prev => !prev)}
         aria-label="Menu"
       >
         ☰
       </button>
-
+      
       {/* Sound toggle */}
       <button 
         className="sound-button"
-        onClick={() => setSoundEnabled(!soundEnabled)}
+        onClick={() => setSoundEnabled(prev => !prev)}
         aria-label="Toggle sound"
       >
         {soundEnabled ? '🔊' : '🔇'}
       </button>
-
+      
       {/* Progress bar */}
       <div className="progress-bar">
         <div 
@@ -238,7 +360,7 @@ function App() {
         />
         <span className="progress-text">{progress}%</span>
       </div>
-
+      
       {/* Menu overlay */}
       {showMenu && (
         <div className="menu-overlay">
@@ -250,7 +372,7 @@ function App() {
               <p>Исследовано сцен: {visitedScenes.size} / {Object.keys(story.scenes).length}</p>
               <p>Завершено: {progress}%</p>
             </div>
-
+            
             <div className="menu-section">
               <h3>Достижения ({achievements.length})</h3>
               <div className="achievements-list">
@@ -265,7 +387,7 @@ function App() {
                 )}
               </div>
             </div>
-
+            
             <div className="menu-actions">
               <button onClick={resetProgress} className="reset-button">
                 Начать заново
@@ -277,9 +399,19 @@ function App() {
           </div>
         </div>
       )}
-
-      {/* Main comic view */}
-      <ComicView scene={currentScene} onChoice={handleChoice} completedNodes={completedNodes} />
+      
+      {/* Main comic view with lazy loading */}
+      <Suspense fallback={
+        <div className="loading">
+          <div className="loadingText">Загрузка...</div>
+        </div>
+      }>
+        <ComicView 
+          scene={currentScene} 
+          onChoice={handleChoice} 
+          completedNodes={completedNodes} 
+        />
+      </Suspense>
     </div>
   );
 }
