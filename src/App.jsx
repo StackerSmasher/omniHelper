@@ -9,16 +9,21 @@ function App() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
   const [achievements, setAchievements] = useState([]);
+  const [completedNodes, setCompletedNodes] = useState(new Set());
 
   // Load saved progress
   useEffect(() => {
     const savedProgress = localStorage.getItem('sergey_story_progress');
     if (savedProgress) {
-      const { scene, visited, achievements: savedAchievements } = JSON.parse(savedProgress);
+      const { scene, visited, achievements: savedAchievements, nodes } = JSON.parse(savedProgress);
       setCurrentSceneId(scene);
       setVisitedScenes(new Set(visited));
       setAchievements(savedAchievements || []);
+      setCompletedNodes(new Set(nodes || []));
     }
+    
+    // Clear birthday flag for testing - remove this line after testing
+    localStorage.removeItem('birthday_shown');
   }, []);
 
   // Save progress
@@ -26,10 +31,11 @@ function App() {
     const progressData = {
       scene: currentSceneId,
       visited: Array.from(visitedScenes),
-      achievements
+      achievements,
+      nodes: Array.from(completedNodes)
     };
     localStorage.setItem('sergey_story_progress', JSON.stringify(progressData));
-  }, [currentSceneId, visitedScenes, achievements]);
+  }, [currentSceneId, visitedScenes, achievements, completedNodes]);
 
   // Check for achievements
   useEffect(() => {
@@ -106,6 +112,11 @@ function App() {
 
   const handleChoice = (nextSceneId) => {
     if (story.scenes[nextSceneId]) {
+      // Track completed nodes
+      if (['node_memory', 'node_choice', 'node_oblivion'].includes(currentSceneId)) {
+        setCompletedNodes(prev => new Set([...prev, currentSceneId]));
+      }
+      
       setCurrentSceneId(nextSceneId);
       setVisitedScenes(prev => new Set([...prev, nextSceneId]));
       
@@ -174,9 +185,11 @@ function App() {
 
   const resetProgress = () => {
     localStorage.removeItem('sergey_story_progress');
+    localStorage.removeItem('birthday_shown');
     setCurrentSceneId(story.startScene);
     setVisitedScenes(new Set([story.startScene]));
     setAchievements([]);
+    setCompletedNodes(new Set());
     setShowMenu(false);
   };
 
@@ -266,7 +279,7 @@ function App() {
       )}
 
       {/* Main comic view */}
-      <ComicView scene={currentScene} onChoice={handleChoice} />
+      <ComicView scene={currentScene} onChoice={handleChoice} completedNodes={completedNodes} />
     </div>
   );
 }
