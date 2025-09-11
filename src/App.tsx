@@ -261,9 +261,15 @@ function App() {
       return;
     }
     
-    // Track completed nodes
-    if (['node_memory', 'node_choice', 'node_oblivion'].includes(currentSceneId)) {
-      setCompletedNodes(prev => new Set([...prev, currentSceneId]));
+    // Track completed nodes based on ending scenes
+    if (currentSceneId === 'memory_accepted' || currentSceneId === 'memory_rewritten') {
+      setCompletedNodes(prev => new Set([...prev, 'node_memory']));
+    }
+    if (currentSceneId === 'conscious_choice' || currentSceneId === 'stoic_peace') {
+      setCompletedNodes(prev => new Set([...prev, 'node_choice']));
+    }
+    if (currentSceneId === 'creative_immortality' || currentSceneId === 'oblivion_acceptance') {
+      setCompletedNodes(prev => new Set([...prev, 'node_oblivion']));
     }
     
     // Update scene
@@ -408,7 +414,8 @@ function App() {
         <ComicView 
           scene={currentScene} 
           onChoice={handleChoice} 
-          completedNodes={completedNodes} 
+          completedNodes={completedNodes}
+          currentSceneId={currentSceneId}
         />
       </Suspense>
     </div>

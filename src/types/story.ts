@@ -157,6 +157,7 @@ export interface ComicViewProps {
   scene: Scene;
   onChoice: (nextSceneId: string) => void;
   completedNodes?: Set<string>;
+  currentSceneId: string;
 }
 
 export interface CharacterNameProps {
