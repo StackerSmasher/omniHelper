@@ -1,9 +1,38 @@
+import type {
+  PerformanceMetrics,
+  OptimizationRecommendation,
+  PerformanceReport,
+  AnimationTimer,
+  AnimationMeasurement,
+  PerformanceEventHandler,
+  AnimationFrameId,
+  IntervalId
+} from '@/types/story';
+
 /**
  * Performance monitoring utility for visual novel text rendering optimization
  * Tracks render times, frame drops, and provides adaptive optimization suggestions
  */
+
+interface PerformanceMonitorOptions {
+  sampleSize?: number;
+  targetFPS?: number;
+  warningThreshold?: number;
+  criticalThreshold?: number;
+  enableDetailedProfiling?: boolean;
+}
+
 export class PerformanceMonitor {
-  constructor(options = {}) {
+  private options: Required<PerformanceMonitorOptions>;
+  private metrics: PerformanceMetrics;
+  private observers: Map<string, Set<PerformanceEventHandler>>;
+  private isMonitoring: boolean;
+  private lastFrameTime: number;
+  private frameMonitorId?: AnimationFrameId;
+  private memoryMonitorId?: IntervalId;
+  private mutationObserver?: MutationObserver;
+
+  constructor(options: PerformanceMonitorOptions = {}) {
     this.options = {
       sampleSize: options.sampleSize || 60,
       targetFPS: options.targetFPS || 60,
@@ -20,7 +49,10 @@ export class PerformanceMonitor {
       textRenderTime: 0,
       animationTime: 0,
       totalElements: 0,
-      memoryUsage: 0
+      memoryUsage: 0,
+      isPerformant: true,
+      memoryPressure: false,
+      recommendations: []
     };
 
     this.observers = new Map();
@@ -31,7 +63,7 @@ export class PerformanceMonitor {
   /**
    * Start performance monitoring
    */
-  startMonitoring() {
+  startMonitoring(): void {
     if (this.isMonitoring) return;
     
     this.isMonitoring = true;
@@ -56,7 +88,7 @@ export class PerformanceMonitor {
   /**
    * Stop performance monitoring
    */
-  stopMonitoring() {
+  stopMonitoring(): void {
     if (!this.isMonitoring) return;
     
     this.isMonitoring = false;
@@ -77,7 +109,7 @@ export class PerformanceMonitor {
   /**
    * Monitor frame rendering performance
    */
-  monitorFrames(currentTime) {
+  monitorFrames(currentTime: number): void {
     const deltaTime = currentTime - this.lastFrameTime;
     const fps = 1000 / deltaTime;
     
@@ -106,7 +138,7 @@ export class PerformanceMonitor {
   /**
    * Measure text rendering performance
    */
-  measureTextRender(operation) {
+  measureTextRender(operation: string): AnimationTimer {
     const startTime = performance.now();
     
     return {
@@ -128,7 +160,7 @@ export class PerformanceMonitor {
   /**
    * Measure animation performance
    */
-  measureAnimation(animationType) {
+  measureAnimation(animationType: string): { end: () => AnimationMeasurement } {
     const startTime = performance.now();
     
     return {
@@ -148,7 +180,7 @@ export class PerformanceMonitor {
   /**
    * Get current performance metrics
    */
-  getMetrics() {
+  getMetrics(): PerformanceMetrics {
     return {
       ...this.metrics,
       isPerformant: this.metrics.averageFPS > 55 && this.metrics.frameDrops < 5,
@@ -160,8 +192,8 @@ export class PerformanceMonitor {
   /**
    * Get optimization recommendations based on current performance
    */
-  getOptimizationRecommendations() {
-    const recommendations = [];
+  getOptimizationRecommendations(): OptimizationRecommendation[] {
+    const recommendations: OptimizationRecommendation[] = [];
     
     if (this.metrics.averageFPS < 45) {
       recommendations.push({
@@ -225,7 +257,7 @@ export class PerformanceMonitor {
   /**
    * Setup DOM mutation observer for detailed profiling
    */
-  setupMutationObserver() {
+  setupMutationObserver(): void {
     this.mutationObserver = new MutationObserver((mutations) => {
       let addedNodes = 0;
       let removedNodes = 0;
@@ -247,19 +279,19 @@ export class PerformanceMonitor {
   /**
    * Register performance event observer
    */
-  onPerformanceEvent(eventType, callback) {
+  onPerformanceEvent(eventType: string, callback: PerformanceEventHandler): void {
     if (!this.observers.has(eventType)) {
       this.observers.set(eventType, new Set());
     }
-    this.observers.get(eventType).add(callback);
+    this.observers.get(eventType)!.add(callback);
   }
 
   /**
    * Notify observers of performance events
    */
-  notifyObservers(eventType, data) {
+  notifyObservers(eventType: string, data: any): void {
     if (this.observers.has(eventType)) {
-      this.observers.get(eventType).forEach(callback => {
+      this.observers.get(eventType)!.forEach(callback => {
         try {
           callback(data);
         } catch (error) {
@@ -272,7 +304,7 @@ export class PerformanceMonitor {
   /**
    * Generate performance report
    */
-  generateReport() {
+  generateReport(): PerformanceReport {
     const metrics = this.getMetrics();
     const avgRenderTime = metrics.renderTimes.reduce((sum, time) => sum + time, 0) / metrics.renderTimes.length;
     
@@ -293,7 +325,7 @@ export class PerformanceMonitor {
   /**
    * Calculate overall performance rating
    */
-  calculatePerformanceRating(metrics) {
+  calculatePerformanceRating(metrics: PerformanceMetrics): { score: number; grade: string } {
     let score = 100;
     
     // FPS penalty
@@ -321,7 +353,7 @@ export class PerformanceMonitor {
   /**
    * Get performance grade based on score
    */
-  getPerformanceGrade(score) {
+  getPerformanceGrade(score: number): string {
     if (score >= 90) return 'A';
     if (score >= 80) return 'B';
     if (score >= 70) return 'C';
@@ -332,7 +364,7 @@ export class PerformanceMonitor {
   /**
    * Clean up resources
    */
-  cleanup() {
+  cleanup(): void {
     this.stopMonitoring();
     this.observers.clear();
     this.metrics = {
@@ -342,7 +374,10 @@ export class PerformanceMonitor {
       textRenderTime: 0,
       animationTime: 0,
       totalElements: 0,
-      memoryUsage: 0
+      memoryUsage: 0,
+      isPerformant: true,
+      memoryPressure: false,
+      recommendations: []
     };
   }
 }

@@ -1,9 +1,24 @@
+import type { 
+  TextRenderOptions, 
+  TextAnimationState, 
+  ProcessedDialogue, 
+  Scene,
+  AnimationFrameId,
+  DeviceProfile,
+  PerformanceSettings
+} from '@/types/story';
+
 /**
  * High-performance text renderer optimized for visual novel typewriter effects
  * Eliminates stuttering through efficient animation and rendering strategies
  */
 export class TextRenderer {
-  constructor(options = {}) {
+  private options: Required<TextRenderOptions>;
+  private textBuffer: Map<string, ProcessedDialogue[]>;
+  private activeAnimations: Map<string, AnimationFrameId>;
+  private preloadPromises: Map<string, Promise<ProcessedDialogue[]>>;
+
+  constructor(options: TextRenderOptions = {}) {
     this.options = {
       baseSpeed: options.baseSpeed || 30,
       fastSpeed: options.fastSpeed || 10,
@@ -11,6 +26,8 @@ export class TextRenderer {
       newLineDelay: options.newLineDelay || 500,
       enableBuffering: options.enableBuffering !== false,
       maxBufferSize: options.maxBufferSize || 1000,
+      batchSize: options.batchSize || 1,
+      maxUpdateRate: options.maxUpdateRate || 16.67,
       ...options
     };
     
@@ -22,12 +39,12 @@ export class TextRenderer {
   /**
    * Preloads and processes text for smooth transitions
    */
-  async preloadScene(sceneData) {
-    if (!sceneData?.dialogue) return;
+  async preloadScene(sceneData: Scene): Promise<ProcessedDialogue[]> {
+    if (!sceneData?.dialogue) return [];
     
     const sceneKey = this.generateSceneKey(sceneData);
     if (this.textBuffer.has(sceneKey)) {
-      return this.textBuffer.get(sceneKey);
+      return this.textBuffer.get(sceneKey)!;
     }
 
     const processedDialogue = sceneData.dialogue.map((line, index) => ({
@@ -46,8 +63,13 @@ export class TextRenderer {
   /**
    * Optimized typewriter animation using requestAnimationFrame
    */
-  animateText(dialogue, lineIndex, onUpdate, onComplete) {
-    const animationKey = `${dialogue.id}-${lineIndex}`;
+  animateText(
+    dialogue: ProcessedDialogue[], 
+    lineIndex: number, 
+    onUpdate: (state: TextAnimationState) => void, 
+    onComplete?: (lineIndex?: number) => void
+  ): string {
+    const animationKey = `${dialogue[0]?.id}-${lineIndex}`;
     
     // Cancel existing animation for this line
     if (this.activeAnimations.has(animationKey)) {
@@ -57,17 +79,26 @@ export class TextRenderer {
     const line = dialogue[lineIndex];
     if (!line) {
       onComplete?.();
-      return;
+      return animationKey;
     }
 
     let charIndex = 0;
     let lastFrameTime = performance.now();
     let accumulatedTime = 0;
+    let updateCount = 0;
     
-    const animate = (currentTime) => {
+    const animate = (currentTime: number): void => {
+      updateCount++;
       const deltaTime = currentTime - lastFrameTime;
       lastFrameTime = currentTime;
       accumulatedTime += deltaTime;
+      
+      // Safety check: prevent infinite loops
+      if (updateCount > 10000) {
+        this.activeAnimations.delete(animationKey);
+        onComplete?.(lineIndex);
+        return;
+      }
       
       const speed = this.getCharacterSpeed(line.text[charIndex]);
       
@@ -94,8 +125,11 @@ export class TextRenderer {
         }
       }
 
-      if (charIndex < line.text.length) {
+      // Continue animation only if we haven't completed and animation is still active
+      if (charIndex < line.text.length && this.activeAnimations.has(animationKey)) {
         this.activeAnimations.set(animationKey, requestAnimationFrame(animate));
+      } else {
+        this.activeAnimations.delete(animationKey);
       }
     };
 
@@ -106,7 +140,7 @@ export class TextRenderer {
   /**
    * Batch update multiple lines for smooth scene transitions
    */
-  batchUpdateLines(updates, callback) {
+  batchUpdateLines(updates: TextAnimationState[], callback: (updates: TextAnimationState[]) => void): void {
     // Use a single RAF callback to update multiple lines
     requestAnimationFrame(() => {
       callback(updates);
@@ -116,7 +150,7 @@ export class TextRenderer {
   /**
    * Calculate typing duration based on text content
    */
-  calculateTypingDuration(text) {
+  calculateTypingDuration(text: string): number {
     let duration = 0;
     for (let i = 0; i < text.length; i++) {
       duration += this.getCharacterSpeed(text[i]);
@@ -127,7 +161,7 @@ export class TextRenderer {
   /**
    * Get typing speed for specific characters
    */
-  getCharacterSpeed(char) {
+  getCharacterSpeed(char: string): number {
     if (!char) return this.options.baseSpeed;
     
     // Slower for punctuation for natural reading rhythm
@@ -146,8 +180,8 @@ export class TextRenderer {
   /**
    * Cancel all active animations
    */
-  cancelAllAnimations() {
-    for (const [key, animationId] of this.activeAnimations) {
+  cancelAllAnimations(): void {
+    for (const [, animationId] of this.activeAnimations) {
       cancelAnimationFrame(animationId);
     }
     this.activeAnimations.clear();
@@ -156,9 +190,9 @@ export class TextRenderer {
   /**
    * Cancel specific animation
    */
-  cancelAnimation(key) {
+  cancelAnimation(key: string): void {
     if (this.activeAnimations.has(key)) {
-      cancelAnimationFrame(this.activeAnimations.get(key));
+      cancelAnimationFrame(this.activeAnimations.get(key)!);
       this.activeAnimations.delete(key);
     }
   }
@@ -166,14 +200,14 @@ export class TextRenderer {
   /**
    * Generate unique key for scene caching
    */
-  generateSceneKey(sceneData) {
+  generateSceneKey(sceneData: Scene): string {
     return `scene-${JSON.stringify(sceneData.dialogue).substring(0, 50).replace(/[^a-zA-Z0-9]/g, '')}-${sceneData.dialogue.length}`;
   }
 
   /**
    * Clean up resources
    */
-  cleanup() {
+  cleanup(): void {
     this.cancelAllAnimations();
     this.textBuffer.clear();
     this.preloadPromises.clear();
@@ -184,17 +218,17 @@ export class TextRenderer {
  * Device performance profiler for adaptive rendering
  */
 export class DeviceProfiler {
-  static getDeviceProfile() {
+  static getDeviceProfile(): DeviceProfile {
     const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl') as WebGLRenderingContext;
     
-    let profile = 'low';
+    let profile: DeviceProfile = 'low';
     
     // Check hardware acceleration
     if (gl) {
       const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
       if (debugInfo) {
-        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) as string;
         if (renderer.includes('NVIDIA') || renderer.includes('AMD') || renderer.includes('Intel HD')) {
           profile = 'medium';
         }
@@ -229,8 +263,8 @@ export class DeviceProfiler {
     return profile;
   }
 
-  static getOptimizedSettings(profile) {
-    const settings = {
+  static getOptimizedSettings(profile: DeviceProfile): PerformanceSettings {
+    const settings: Record<DeviceProfile, PerformanceSettings> = {
       low: {
         particleCount: 10,
         animationQuality: 0.5,

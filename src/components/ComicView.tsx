@@ -1,87 +1,215 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import type {
+  ComicViewProps,
+  CharacterNameProps,
+  MessageTextProps,
+  DeviceProfile,
+  SparkElement,
+  VoidElement,
+  AnimationFrameId,
+  ProcessedDialogue,
+  TextAnimationState
+} from '@/types/story';
 import styles from './ComicView.module.css';
-import { TextRenderer } from '../utils/TextRenderer';
+import { TextRenderer, DeviceProfiler } from '../utils/TextRenderer';
 import { PerformanceMonitor } from '../utils/PerformanceMonitor';
 
 // Memoized character component for performance
-const CharacterName = React.memo(({ character }) => (
-  <span className={styles.character}>{character}:</span>
+const CharacterName = React.memo<CharacterNameProps>(({ character }) => (
+  <span className={styles['character']}>{character}:</span>
 ));
 
 // Memoized message component with optimized rendering
-const MessageText = React.memo(({ message, isComplete }) => (
-  <span className={styles.message}>
+const MessageText = React.memo<MessageTextProps>(({ message, isComplete }) => (
+  <span className={styles['message']}>
     {message}
-    {!isComplete && <span className={styles.cursor}>_</span>}
+    {!isComplete && <span className={styles['cursor']}>_</span>}
   </span>
 ));
 
-const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
-  const [renderedDialogue, setRenderedDialogue] = useState([]);
-  const [currentLineIndex, setCurrentLineIndex] = useState(0);
-  const [isTyping, setIsTyping] = useState(true);
-  const [showChoices, setShowChoices] = useState(false);
-  const [selectedChoice, setSelectedChoice] = useState(null);
-  const [gifPlayed, setGifPlayed] = useState({});
-  const [deviceProfile, setDeviceProfile] = useState('medium');
+const ComicView: React.FC<ComicViewProps> = ({ scene, onChoice, completedNodes = new Set() }) => {
+  const [renderedDialogue, setRenderedDialogue] = useState<string[]>([]);
+  const [currentLineIndex, setCurrentLineIndex] = useState<number>(0);
+  const [isTyping, setIsTyping] = useState<boolean>(true);
+  const [showChoices, setShowChoices] = useState<boolean>(false);
+  const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
+  const [gifPlayed, setGifPlayed] = useState<Record<string, boolean>>({});
+  const [deviceProfile, setDeviceProfile] = useState<DeviceProfile>('medium');
   
   // Refs for performance optimization
-  const textRendererRef = useRef(null);
-  const performanceMonitorRef = useRef(null);
-  const animationFrameRef = useRef(null);
-  const sceneBufferRef = useRef(new Map());
+  const textRendererRef = useRef<TextRenderer | null>(null);
+  const performanceMonitorRef = useRef<PerformanceMonitor | null>(null);
+  const animationFrameRef = useRef<AnimationFrameId | null>(null);
+  const sceneBufferRef = useRef<Map<string, ProcessedDialogue[]>>(new Map());
+  const dialogueContainerRef = useRef<HTMLDivElement>(null);
+  const isTypingAnimationRef = useRef<boolean>(false);
 
+  // Initialize performance utilities
+  useEffect(() => {
+    // Initialize TextRenderer with optimized settings for current device profile
+    if (!textRendererRef.current) {
+      const optimizedSettings = DeviceProfiler.getOptimizedSettings(deviceProfile);
+      textRendererRef.current = new TextRenderer({
+        baseSpeed: optimizedSettings.typewriterSpeed,
+        fastSpeed: Math.max(10, optimizedSettings.typewriterSpeed * 0.5),
+        punctuationDelay: deviceProfile === 'low' ? 50 : 150,
+        newLineDelay: deviceProfile === 'low' ? 200 : 500,
+        enableBuffering: true,
+        maxBufferSize: deviceProfile === 'low' ? 500 : 1000
+      });
+    }
+
+    // Initialize PerformanceMonitor
+    if (!performanceMonitorRef.current) {
+      performanceMonitorRef.current = new PerformanceMonitor({
+        sampleSize: 60,
+        targetFPS: 60,
+        warningThreshold: 16.67,
+        criticalThreshold: 33.33,
+        enableDetailedProfiling: process.env.NODE_ENV === 'development'
+      });
+      performanceMonitorRef.current.startMonitoring();
+    }
+
+    // Auto-detect device profile on first load
+    if (deviceProfile === 'medium') {
+      const detectedProfile = DeviceProfiler.getDeviceProfile();
+      setDeviceProfile(detectedProfile);
+    }
+
+    return () => {
+      // Cleanup when component unmounts
+      textRendererRef.current?.cleanup();
+      performanceMonitorRef.current?.cleanup();
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
+
+  // Scene change handler with preloading and buffering
   useEffect(() => {
     if (!scene) return;
     
-    // Reset state when scene changes
-    setDisplayedText([]);
-    setCurrentDialogueIndex(0);
-    setIsTyping(true);
-    setShowChoices(false);
-    setSelectedChoice(null);
+    const handleSceneChange = async () => {
+      // Cancel any existing animations
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      
+      isTypingAnimationRef.current = false;
+
+      // Reset state when scene changes
+      setRenderedDialogue([]);
+      setCurrentLineIndex(0);
+      setIsTyping(true);
+      setShowChoices(false);
+      setSelectedChoice(null);
+
+      // Preload scene data using TextRenderer
+      if (textRendererRef.current) {
+        const sceneKey = textRendererRef.current.generateSceneKey(scene);
+        
+        // Check if scene is already buffered
+        if (!sceneBufferRef.current.has(sceneKey)) {
+          try {
+            const processedDialogue = await textRendererRef.current.preloadScene(scene);
+            sceneBufferRef.current.set(sceneKey, processedDialogue);
+          } catch (error) {
+            console.warn('Failed to preload scene:', error);
+          }
+        }
+      }
+    };
+
+    handleSceneChange();
     // Don't reset gifPlayed here - let each GIF manage its own state
   }, [scene]);
 
+  // Optimized typewriter animation using requestAnimationFrame
   useEffect(() => {
-    if (!scene || currentDialogueIndex >= scene.dialogue.length) {
-      if (currentDialogueIndex >= scene.dialogue.length && !showChoices) {
+    if (!scene || currentLineIndex >= scene.dialogue.length || !textRendererRef.current) {
+      if (currentLineIndex >= scene.dialogue.length && !showChoices) {
         setTimeout(() => setShowChoices(true), 500);
       }
       return;
     }
 
-    const currentLine = scene.dialogue[currentDialogueIndex];
-    const text = `${currentLine.character}: ${currentLine.text}`;
-    let charIndex = 0;
+    // Prevent multiple animations from running simultaneously
+    if (isTypingAnimationRef.current) {
+      return;
+    }
+
+    const sceneKey = textRendererRef.current.generateSceneKey(scene);
+    const processedDialogue = sceneBufferRef.current.get(sceneKey);
     
-    const typewriterInterval = setInterval(() => {
-      if (charIndex <= text.length) {
-        setDisplayedText(prev => {
-          const newText = [...prev];
-          newText[currentDialogueIndex] = text.substring(0, charIndex);
-          return newText;
+    if (!processedDialogue) {
+      // Fallback to original method if preloading failed
+      const currentLine = scene.dialogue[currentLineIndex];
+      const text = `${currentLine.character}: ${currentLine.text}`;
+      let charIndex = 0;
+      
+      const typewriterInterval = setInterval(() => {
+        if (charIndex <= text.length) {
+          setRenderedDialogue(prev => {
+            const newText = [...prev];
+            newText[currentLineIndex] = text.substring(0, charIndex);
+            return newText;
+          });
+          charIndex++;
+        } else {
+          clearInterval(typewriterInterval);
+          setTimeout(() => {
+            setCurrentLineIndex(prev => prev + 1);
+          }, 1500);
+        }
+      }, 30);
+
+      return () => clearInterval(typewriterInterval);
+    }
+
+    // Use optimized TextRenderer animation
+    isTypingAnimationRef.current = true;
+    
+    const animationKey = textRendererRef.current.animateText(
+      processedDialogue,
+      currentLineIndex,
+      (state: TextAnimationState) => {
+        // Batch DOM updates using requestAnimationFrame
+        requestAnimationFrame(() => {
+          setRenderedDialogue(prev => {
+            const newText = [...prev];
+            newText[state.lineIndex] = state.text;
+            return newText;
+          });
         });
-        charIndex++;
-      } else {
-        clearInterval(typewriterInterval);
+      },
+      () => {
+        isTypingAnimationRef.current = false;
+        // Add delay before moving to next line for readability
         setTimeout(() => {
-          setCurrentDialogueIndex(prev => prev + 1);
+          setCurrentLineIndex(prev => prev + 1);
         }, 1500);
       }
-    }, 30);
+    );
 
-    return () => clearInterval(typewriterInterval);
-  }, [scene, currentDialogueIndex]);
+    return () => {
+      if (textRendererRef.current && animationKey) {
+        textRendererRef.current.cancelAnimation(animationKey);
+      }
+      isTypingAnimationRef.current = false;
+    };
+  }, [scene, currentLineIndex, showChoices]);
 
-  const handleChoice = (choice, index) => {
+  const handleChoice = (choice: { nextScene: string }, index: number): void => {
     setSelectedChoice(index);
     setTimeout(() => {
       onChoice(choice.nextScene);
     }, 500);
   };
 
-  const applyGlitchEffects = (imageData, glitchTypes) => {
+  const applyGlitchEffects = (imageData: ImageData, glitchTypes: string[]): void => {
     const pixels = imageData.data;
     const width = imageData.width;
     const height = imageData.height;
@@ -214,7 +342,7 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
     });
   };
 
-  const handleGifLoad = (imgElement) => {
+  const handleGifLoad = (imgElement: HTMLImageElement): void => {
     const gifSrc = imgElement.src;
     if (gifPlayed[gifSrc]) return;
     
@@ -310,7 +438,7 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
   }
 
   // Determine scene atmosphere based on current scene
-  const getSceneAtmosphere = () => {
+  const getSceneAtmosphere = (): string => {
     if (scene.dialogue[0]?.character === 'Агент Пыли') return styles.agentScene;
     if (scene.dialogue[0]?.character === 'Узел Памяти') return styles.memoryScene;
     if (scene.dialogue[0]?.character === 'Узел Выбора') return styles.choiceScene;
@@ -319,7 +447,7 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
   };
 
   // Get GIF for current scene
-  const getSceneGif = () => {
+  const getSceneGif = (): string | null => {
     // Prologue scene
     if (scene.dialogue[0]?.character === 'Голос из Пустоты') {
       return '/gifs/grok-video-431581ef-73ad-4e7e-ab52-75a3ce451c73.gif';
@@ -366,15 +494,15 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
   };
 
   // Check if current scene has electrical effects
-  const shouldShowElectricalEffects = () => {
+  const shouldShowElectricalEffects = (): boolean => {
     return scene.dialogue[0]?.character === 'Рассказчик' && 
            scene.dialogue[0]?.text.includes('Щиток гудит, провода дышат');
   };
 
   // Memoized spark generation - adaptive count based on device profile  
-  const generateElectricalSparks = useMemo(() => {
+  const generateElectricalSparks = useMemo((): SparkElement[] => {
     const sparkCount = deviceProfile === 'low' ? 4 : deviceProfile === 'medium' ? 6 : 8;
-    const sparks = [];
+    const sparks: SparkElement[] = [];
     for (let i = 0; i < sparkCount; i++) {
       sparks.push({
         id: i,
@@ -387,27 +515,27 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
   }, [deviceProfile]);
 
   // Check if current scene has mirror/reflection effects
-  const shouldShowMirrorEffects = () => {
+  const shouldShowMirrorEffects = (): boolean => {
     return scene.dialogue[0]?.character === 'Поток' && 
            scene.dialogue[0]?.text.includes('Тысячи жизней. Ты видишь себя в глазах других');
   };
 
   // Check if current scene has aggressive void/NECHTO effects
-  const shouldShowVoidEffects = () => {
+  const shouldShowVoidEffects = (): boolean => {
     return scene.dialogue[0]?.character === 'Рассказчик' && 
            scene.dialogue[0]?.text.includes('НЕЧТО на мониторе - геометрию невозможных углов');
   };
 
-  const shouldShowPostcardEffects = () => {
+  const shouldShowPostcardEffects = (): boolean => {
     return scene.dialogue[0]?.character === 'Рассказчик' && 
            scene.dialogue[0]?.text.includes('Черная открытка холодит пальцы');
   };
 
   // Memoized void elements generation - adaptive count based on device profile
-  const generateVoidElements = useMemo(() => {
+  const generateVoidElements = useMemo((): VoidElement[] => {
     const fleshCount = deviceProfile === 'low' ? 6 : deviceProfile === 'medium' ? 9 : 12;
     const shadowCount = deviceProfile === 'low' ? 3 : deviceProfile === 'medium' ? 4 : 6;
-    const elements = [];
+    const elements: VoidElement[] = [];
     
     // Digital flesh particles
     for (let i = 0; i < fleshCount; i++) {
@@ -433,40 +561,91 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
   }, [deviceProfile]);
 
   // Apply device-specific performance classes
-  const getDeviceClass = () => {
+  const getDeviceClass = (): string => {
     if (deviceProfile === 'low') return styles.lowPerformance;
     if (deviceProfile === 'medium') return styles.mediumPerformance;
     if (deviceProfile === 'high') return styles.highPerformance;
     return '';
   };
   
-  // Performance monitoring effect
+  // Performance monitoring and adaptive optimization
   useEffect(() => {
     if (!performanceMonitorRef.current) return;
     
     const monitor = performanceMonitorRef.current;
+    let lastDowngradeTime = 0;
+    const DOWNGRADE_COOLDOWN = 5000; // 5 seconds cooldown between downgrades
     
-    // Subscribe to performance warnings
+    // Subscribe to performance warnings for adaptive optimization (simplified)
     monitor.onPerformanceEvent('performance-critical', (data) => {
-      console.warn('Critical performance issue detected:', data);
-      
-      // Auto-downgrade device profile if performance is poor
-      if (data.renderTime > 50 && deviceProfile !== 'low') {
+      const now = Date.now();
+      // Only downgrade for extreme performance issues with cooldown
+      if (data.renderTime > 500 && deviceProfile !== 'low' && (now - lastDowngradeTime > DOWNGRADE_COOLDOWN)) {
         const newProfile = deviceProfile === 'high' ? 'medium' : 'low';
-        console.log(`Auto-downgrading device profile from ${deviceProfile} to ${newProfile}`);
+        lastDowngradeTime = now;
         setDeviceProfile(newProfile);
+        
+        // Update TextRenderer settings for new profile using optimized settings
+        if (textRendererRef.current) {
+          textRendererRef.current.cleanup();
+          const optimizedSettings = DeviceProfiler.getOptimizedSettings(newProfile);
+          textRendererRef.current = new TextRenderer({
+            baseSpeed: optimizedSettings.typewriterSpeed,
+            fastSpeed: Math.max(10, optimizedSettings.typewriterSpeed * 0.5),
+            punctuationDelay: newProfile === 'low' ? 50 : 150,
+            newLineDelay: newProfile === 'low' ? 200 : 500,
+            enableBuffering: true,
+            maxBufferSize: newProfile === 'low' ? 500 : 1000
+          });
+        }
+      }
+    });
+
+    // Subscribe to frame rate warnings (simplified)
+    monitor.onPerformanceEvent('low-fps', (data) => {
+      const now = Date.now();
+      // Only downgrade for sustained low FPS with cooldown
+      if (data.averageFPS < 30 && deviceProfile !== 'low' && (now - lastDowngradeTime > DOWNGRADE_COOLDOWN)) {
+        const newProfile = deviceProfile === 'high' ? 'medium' : 'low';
+        lastDowngradeTime = now;
+        setDeviceProfile(newProfile);
+        
+        // Update TextRenderer for the new profile
+        if (textRendererRef.current) {
+          textRendererRef.current.cleanup();
+          const optimizedSettings = DeviceProfiler.getOptimizedSettings(newProfile);
+          textRendererRef.current = new TextRenderer({
+            baseSpeed: optimizedSettings.typewriterSpeed,
+            fastSpeed: Math.max(10, optimizedSettings.typewriterSpeed * 0.5),
+            punctuationDelay: newProfile === 'low' ? 50 : 150,
+            newLineDelay: newProfile === 'low' ? 200 : 500,
+            enableBuffering: true,
+            maxBufferSize: newProfile === 'low' ? 500 : 1000
+          });
+        }
       }
     });
     
-    // Log performance metrics periodically in development
-    if (process.env.NODE_ENV === 'development') {
-      const metricsInterval = setInterval(() => {
-        const report = monitor.generateReport();
-        console.log('Performance Report:', report);
-      }, 10000); // Every 10 seconds
-      
-      return () => clearInterval(metricsInterval);
-    }
+    // Development-time performance debugging (disabled to prevent performance loops)
+    // if (process.env.NODE_ENV === 'development') {
+    //   const metricsInterval = setInterval(() => {
+    //     const report = monitor.generateReport();
+    //     console.groupCollapsed('🎭 Comic Performance Report');
+    //     console.log('📊 FPS:', report.summary.averageFPS);
+    //     console.log('⏱️ Avg Render Time:', report.summary.averageRenderTime + 'ms');
+    //     console.log('🎛️ Device Profile:', deviceProfile);
+    //     console.log('💾 Memory Usage:', report.summary.memoryUsage + 'MB');
+    //     console.log('📈 Performance Grade:', report.summary.performanceRating.grade);
+    //     console.log('🔍 Full Report:', report);
+    //     
+    //     if (report.recommendations.length > 0) {
+    //       console.warn('⚠️ Performance Recommendations:', report.recommendations);
+    //     }
+    //     console.groupEnd();
+    //   }, 10000); // Every 10 seconds
+    //   
+    //   return () => clearInterval(metricsInterval);
+    // }
   }, [deviceProfile]);
 
   return (
@@ -505,13 +684,13 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
           <div 
             className={styles.electricPulse}
             style={{
-              '--pulse-x': `${30 + Math.random() * 40}%`,
-              '--pulse-y': `${30 + Math.random() * 40}%`
-            }}
+              ['--pulse-x' as any]: `${30 + Math.random() * 40}%`,
+              ['--pulse-y' as any]: `${30 + Math.random() * 40}%`
+            } as React.CSSProperties}
           />
           
           {/* Electric sparks */}
-          {generateElectricalSparks().map(spark => (
+          {generateElectricalSparks.map(spark => (
             <div
               key={spark.id}
               className={styles.electricSparks}
@@ -565,7 +744,7 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
           ))}
           
           {/* Digital flesh and void shadows */}
-          {generateVoidElements().map(element => (
+          {generateVoidElements.map(element => (
             <div
               key={element.id}
               className={element.type === 'flesh' ? styles.digitalFlesh : styles.voidShadows}
@@ -623,7 +802,7 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
             src={getSceneGif()}
             alt="Cyberpunk scene"
             className={styles.gifImage}
-            onLoad={(e) => handleGifLoad(e.target)}
+            onLoad={(e) => handleGifLoad(e.target as HTMLImageElement)}
             key={getSceneGif()} // Force reload on scene change
             loading="lazy" // Lazy loading for performance
             decoding="async" // Async decoding
@@ -632,40 +811,39 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
       )}
 
       {/* Dialogue container */}
-      <div className={styles.dialogueContainer}>
+      <div className={styles.dialogueContainer} ref={dialogueContainerRef}>
         <div 
           className={styles.dialogueBox}
           style={{
             transform: 'translateZ(0)', // Hardware acceleration
-            willChange: isTyping ? 'contents' : 'auto' // Optimize for content changes
+            willChange: isTyping ? 'contents' : 'auto', // Optimize for content changes
+            contain: 'layout style paint' // Performance containment
           }}
         >
-          {renderedDialogue.map((line, index) => {
-            if (!line) return null;
+          {scene.dialogue.map((line, index) => {
+            // Text virtualization: Only render visible and nearby lines
+            const isVisible = index <= currentLineIndex;
+            const isNearby = index <= currentLineIndex + 2; // Preload 2 lines ahead
             
-            // Measure render performance for each line
-            const renderTimer = performanceMonitorRef.current?.measureTextRender(`dialogue-line-${index}`);
+            if (!isNearby) return null;
             
             const lineElement = (
               <div 
-                key={line.key || `line-${index}`} 
-                className={`${styles.dialogueLine} ${styles.fadeIn}`}
+                key={`line-${index}`} 
+                className={`${styles.dialogueLine} ${isVisible ? styles.fadeIn : ''}`}
                 style={{ 
                   animationDelay: `${index * 0.2}s`,
                   transform: 'translateZ(0)', // Force hardware acceleration
-                  willChange: line.isComplete ? 'auto' : 'transform' // Optimize for animation
-                }}
-                ref={(el) => {
-                  if (el && renderTimer) {
-                    // Measure when element is actually rendered
-                    requestAnimationFrame(() => renderTimer.end());
-                  }
+                  willChange: index === currentLineIndex ? 'contents' : 'auto', // Only optimize current line
+                  opacity: isVisible ? 1 : 0,
+                  visibility: isVisible ? 'visible' : 'hidden',
+                  contain: 'layout style' // Performance containment
                 }}
               >
                 <CharacterName character={line.character} />
                 <MessageText 
-                  message={line.message} 
-                  isComplete={line.isComplete}
+                  message={renderedDialogue[index] || ''} 
+                  isComplete={index < currentLineIndex}
                 />
               </div>
             );
@@ -674,16 +852,10 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
           })}
         </div>
 
-        {/* Choices - with performance measurement */}
+        {/* Choices */}
         {showChoices && (
           <div 
             className={`${styles.choices} ${styles.fadeIn}`}
-            ref={(el) => {
-              if (el && performanceMonitorRef.current) {
-                const timer = performanceMonitorRef.current.measureTextRender('choices-render');
-                requestAnimationFrame(() => timer?.end());
-              }
-            }}
           >
             {scene.choices
               .filter((choice) => {
@@ -733,6 +905,16 @@ const ComicView = ({ scene, onChoice, completedNodes = new Set() }) => {
         <div className={styles.indicatorDot} />
         <div className={styles.indicatorDot} />
       </div>
+
+      {/* Development performance indicator */}
+      {process.env.NODE_ENV === 'development' && performanceMonitorRef.current && (
+        <div className={styles.performanceIndicator}>
+          <div>FPS: {Math.round(performanceMonitorRef.current.getMetrics().averageFPS)}</div>
+          <div>Profile: {deviceProfile}</div>
+          <div>Memory: {Math.round(performanceMonitorRef.current.getMetrics().memoryUsage)}MB</div>
+          <div>Grade: {performanceMonitorRef.current.getMetrics().recommendations.length === 0 ? 'A' : 'B'}</div>
+        </div>
+      )}
     </div>
   );
 };

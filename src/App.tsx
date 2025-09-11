@@ -1,54 +1,51 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import type { 
+  Story, 
+  Scene, 
+  SavedProgress, 
+  Achievement, 
+  SoundType,
+  Timeout,
+  ChoiceHandler
+} from '@/types/story';
 import story from './story/story.json';
 import './App.css';
 
 // Lazy load ComicView for better initial load performance
 const ComicView = lazy(() => import('./components/ComicView'));
 
-// Web Worker for heavy computations (if needed)
-const useWebWorker = (workerFunction) => {
-  const workerRef = useRef(null);
-  
-  useEffect(() => {
-    const blob = new Blob([`(${workerFunction.toString()})()`], { type: 'application/javascript' });
-    const workerUrl = URL.createObjectURL(blob);
-    workerRef.current = new Worker(workerUrl);
-    
-    return () => {
-      workerRef.current?.terminate();
-      URL.revokeObjectURL(workerUrl);
-    };
-  }, []);
-  
-  return workerRef.current;
-};
+// Note: Web Worker functionality removed for simplicity in TypeScript conversion
 
 function App() {
-  const [currentSceneId, setCurrentSceneId] = useState(story.startScene);
-  const [visitedScenes, setVisitedScenes] = useState(() => new Set([story.startScene]));
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [showMenu, setShowMenu] = useState(false);
-  const [achievements, setAchievements] = useState([]);
-  const [completedNodes, setCompletedNodes] = useState(() => new Set());
-  const [showBirthdayMessage, setShowBirthdayMessage] = useState(false);
+  const [currentSceneId, setCurrentSceneId] = useState<string>(story.startScene);
+  const [visitedScenes, setVisitedScenes] = useState<Set<string>>(() => new Set([story.startScene]));
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [showMenu, setShowMenu] = useState<boolean>(false);
+  const [achievements, setAchievements] = useState<string[]>([]);
+  const [completedNodes, setCompletedNodes] = useState<Set<string>>(() => new Set());
+  const [showBirthdayMessage, setShowBirthdayMessage] = useState<boolean>(false);
   
   // Performance optimizations
-  const audioContextRef = useRef(null);
-  const achievementQueueRef = useRef([]);
-  const saveTimeoutRef = useRef(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const achievementQueueRef = useRef<Achievement[]>([]);
+  const saveTimeoutRef = useRef<Timeout | null>(null);
   
   // Memoized current scene
-  const currentScene = useMemo(() => {
-    return story.scenes[currentSceneId];
+  const currentScene = useMemo((): Scene => {
+    const scene = (story as Story).scenes[currentSceneId];
+    if (!scene) {
+      throw new Error(`Scene "${currentSceneId}" not found`);
+    }
+    return scene;
   }, [currentSceneId]);
   
   // Memoized progress calculation
-  const progress = useMemo(() => {
-    return Math.round((visitedScenes.size / Object.keys(story.scenes).length) * 100);
+  const progress = useMemo((): number => {
+    return Math.round((visitedScenes.size / Object.keys((story as Story).scenes).length) * 100);
   }, [visitedScenes]);
   
   // Initialize audio context lazily
-  const getAudioContext = useCallback(() => {
+  const getAudioContext = useCallback((): AudioContext => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
     }
@@ -60,9 +57,9 @@ function App() {
     try {
       const savedProgress = localStorage.getItem('sergey_story_progress');
       if (savedProgress) {
-        const parsed = JSON.parse(savedProgress);
-        setCurrentSceneId(parsed.scene || story.startScene);
-        setVisitedScenes(new Set(parsed.visited || [story.startScene]));
+        const parsed: SavedProgress = JSON.parse(savedProgress);
+        setCurrentSceneId(parsed.scene || (story as Story).startScene);
+        setVisitedScenes(new Set(parsed.visited || [(story as Story).startScene]));
         setAchievements(parsed.achievements || []);
         setCompletedNodes(new Set(parsed.nodes || []));
       }
@@ -76,7 +73,7 @@ function App() {
   }, []);
   
   // Debounced save progress
-  const saveProgress = useCallback(() => {
+  const saveProgress = useCallback((): void => {
     // Clear existing timeout
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -85,7 +82,7 @@ function App() {
     // Debounce saves to reduce localStorage writes
     saveTimeoutRef.current = setTimeout(() => {
       try {
-        const progressData = {
+        const progressData: SavedProgress = {
           scene: currentSceneId,
           visited: Array.from(visitedScenes),
           achievements,
@@ -110,11 +107,11 @@ function App() {
   }, [saveProgress]);
   
   // Optimized achievement checking
-  const checkAchievements = useCallback(() => {
-    const newAchievements = [];
+  const checkAchievements = useCallback((): void => {
+    const newAchievements: Achievement[] = [];
     
     // Achievement checks
-    const achievementChecks = [
+    const achievementChecks: Achievement[] = [
       {
         id: 'first_steps',
         condition: visitedScenes.size >= 5,
@@ -172,11 +169,13 @@ function App() {
   }, [visitedScenes, achievements]);
   
   // Process achievement notifications one at a time
-  const processAchievementQueue = useCallback(() => {
+  const processAchievementQueue = useCallback((): void => {
     if (achievementQueueRef.current.length === 0) return;
     
     const achievement = achievementQueueRef.current.shift();
-    showAchievement(achievement.title, achievement.description);
+    if (achievement) {
+      showAchievement(achievement.title, achievement.description);
+    }
     
     // Process next achievement after delay
     setTimeout(() => {
@@ -185,7 +184,7 @@ function App() {
   }, []);
   
   // Optimized achievement notification
-  const showAchievement = useCallback((title, description) => {
+  const showAchievement = useCallback((title: string, description: string): void => {
     // Create element only when needed
     requestAnimationFrame(() => {
       const achievementEl = document.createElement('div');
@@ -220,8 +219,8 @@ function App() {
   }, [visitedScenes]);
   
   // Optimized choice handler
-  const handleChoice = useCallback((nextSceneId) => {
-    if (!story.scenes[nextSceneId]) {
+  const handleChoice: ChoiceHandler = useCallback((nextSceneId: string) => {
+    if (!(story as Story).scenes[nextSceneId]) {
       console.error(`Scene "${nextSceneId}" not found!`);
       
       // Show error notification
@@ -253,7 +252,7 @@ function App() {
       showError();
       
       // Fallback to safe scene
-      const fallbackScene = story.scenes['three_nodes_begin'] ? 'three_nodes_begin' : story.startScene;
+      const fallbackScene = (story as Story).scenes['three_nodes_begin'] ? 'three_nodes_begin' : (story as Story).startScene;
       setTimeout(() => {
         setCurrentSceneId(fallbackScene);
         setVisitedScenes(prev => new Set([...prev, fallbackScene]));
@@ -278,7 +277,7 @@ function App() {
   }, [currentSceneId, soundEnabled]);
   
   // Optimized sound playback
-  const playSound = useCallback((type) => {
+  const playSound = useCallback((type: SoundType): void => {
     if (!soundEnabled) return;
     
     try {
@@ -304,11 +303,11 @@ function App() {
   }, [soundEnabled, getAudioContext]);
   
   // Reset progress handler
-  const resetProgress = useCallback(() => {
+  const resetProgress = useCallback((): void => {
     localStorage.removeItem('sergey_story_progress');
     localStorage.removeItem('birthday_shown');
-    setCurrentSceneId(story.startScene);
-    setVisitedScenes(new Set([story.startScene]));
+    setCurrentSceneId((story as Story).startScene);
+    setVisitedScenes(new Set([(story as Story).startScene]));
     setAchievements([]);
     setCompletedNodes(new Set());
     setShowMenu(false);
@@ -316,7 +315,7 @@ function App() {
   }, []);
   
   // Handle birthday message dismissal
-  const handleBirthdayDismiss = useCallback(() => {
+  const handleBirthdayDismiss = useCallback((): void => {
     localStorage.setItem('birthday_shown', 'true');
     setShowBirthdayMessage(false);
   }, []);
@@ -324,7 +323,7 @@ function App() {
   return (
     <div className="app">
       {/* Birthday message */}
-      {showBirthdayMessage && currentSceneId === story.startScene && (
+      {showBirthdayMessage && currentSceneId === (story as Story).startScene && (
         <div className="birthday-message">
           <h1>🎂 С Днем Рождения, Сергей! 🎂</h1>
           <p>Эта интерактивная история - подарок для тебя</p>
@@ -369,7 +368,7 @@ function App() {
             
             <div className="menu-section">
               <h3>Прогресс</h3>
-              <p>Исследовано сцен: {visitedScenes.size} / {Object.keys(story.scenes).length}</p>
+              <p>Исследовано сцен: {visitedScenes.size} / {Object.keys((story as Story).scenes).length}</p>
               <p>Завершено: {progress}%</p>
             </div>
             

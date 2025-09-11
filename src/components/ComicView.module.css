@@ -63,17 +63,19 @@
 
 .particle {
     position: absolute;
-    width: 2px;
-    height: 2px;
+    width: 1px;
+    height: 1px;
     background: #00ffff;
-    border-radius: 50%;
     contain: strict;
     transform: translateZ(0);
-    will-change: transform, opacity;
-    box-shadow: 0 0 4px #00ffff;
+    opacity: 0.7;
+    /* Removed expensive properties */
+    /* border-radius: 50%; */
+    /* will-change: transform, opacity; */
+    /* box-shadow: 0 0 4px #00ffff; */
 }
 
-/* Simple glitch overlay - performance optimized */
+/* Ultra-simple glitch overlay - minimal performance impact */
 .glitchOverlay {
     position: absolute;
     top: 0;
@@ -82,21 +84,28 @@
     height: 100%;
     pointer-events: none;
     opacity: 0;
-    animation: simpleGlitch 8s steps(4) infinite;
     background: repeating-linear-gradient(
-        0deg,
+        90deg,
         transparent,
-        transparent 2px,
-        rgba(255, 0, 64, 0.02) 2px,
-        rgba(255, 0, 64, 0.02) 4px
+        transparent 1px,
+        rgba(255, 0, 64, 0.01) 1px,
+        rgba(255, 0, 64, 0.01) 2px
     );
     contain: strict;
-    will-change: opacity;
 }
 
-@keyframes simpleGlitch {
-    0%, 94%, 100% { opacity: 0; }
-    95%, 96% { opacity: 1; }
+/* Disable glitch animation by default - only show on specific triggers */
+.glitchOverlay.active {
+    animation: safeGlitch 2s ease-out;
+}
+
+@keyframes safeGlitch {
+    0%, 90%, 100% { 
+        opacity: 0; 
+    }
+    95% { 
+        opacity: 0.3; 
+    }
 }
 
 /* Dialogue container - optimized */
@@ -135,9 +144,11 @@
     animation: simpleFadeIn 0.3s forwards;
     font-family: 'Courier New', monospace;
     line-height: 1.6;
-    contain: layout style;
+    contain: layout style paint;
     transform: translateZ(0);
     will-change: opacity;
+    isolation: isolate; /* Create stacking context */
+    backface-visibility: hidden;
 }
 
 @keyframes simpleFadeIn {
@@ -154,6 +165,8 @@
     display: inline-block;
     margin-right: 10px;
     contain: layout style;
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 .message {
@@ -161,6 +174,8 @@
     font-size: 16px;
     text-shadow: 0 0 3px rgba(255, 255, 255, 0.15);
     contain: layout style;
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 /* Cursor animation - GPU optimized */
@@ -342,35 +357,43 @@
     animation: simpleFadeIn 0.3s forwards;
 }
 
-/* Performance profiles */
+/* Performance profiles - more conservative */
 .lowPerformance {
     animation: none !important;
 }
 
 .lowPerformance * {
-    animation-duration: 0.1s !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.1s !important;
+    animation: none !important;
+    transition: none !important;
     filter: none !important;
     box-shadow: none !important;
     text-shadow: none !important;
     backdrop-filter: none !important;
+    will-change: auto !important;
 }
 
 .lowPerformance .particle {
-    display: none;
+    display: none !important;
 }
 
 .lowPerformance .glitchOverlay {
-    display: none;
+    display: none !important;
+}
+
+.lowPerformance .particles {
+    display: none !important;
 }
 
 .mediumPerformance * {
-    animation-duration: 0.5s !important;
+    animation-duration: 1s !important;
 }
 
-.mediumPerformance .particle:nth-child(n+15) {
+.mediumPerformance .particle:nth-child(n+10) {
     display: none;
+}
+
+.mediumPerformance .glitchOverlay {
+    animation-duration: 4s !important;
 }
 
 .highPerformance {
